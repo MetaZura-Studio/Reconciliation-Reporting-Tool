@@ -1,0 +1,171 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  CLIENT
+  OPCO
+  PARTNER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+}
+
+model User {
+  id                   String     @id @default(cuid())
+  fullName             String
+  email                String     @unique
+  mobile               String?
+  role                 UserRole
+  status               UserStatus @default(ACTIVE)
+  passwordHash         String
+  failedLoginCount     Int        @default(0)
+  lockedAt             DateTime?
+  lastLoginAt          DateTime?
+  passwordChangedAt    DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  opcoAssignments      UserOpCo[]
+  partnerAssignments   UserPartner[]
+  reportsSubmitted     Report[]   @relation("ReportSubmitter")
+}
+
+model OpCo {
+  id                  String   @id @default(cuid())
+  code                String   @unique
+  name                String
+  country             String?
+  currency            String?
+  status              String   @default("Active")
+  primaryContactName  String?
+  primaryContactEmail String?
+  primaryContactPhone String?
+  remarks             String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  userAssignments      UserOpCo[]
+  reports              Report[]
+}
+
+model Partner {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  defaultCurrency String?
+  status        String   @default("Active")
+  contactName   String?
+  contactEmail  String?
+  contactPhone  String?
+  remarks       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  userAssignments UserPartner[]
+  serviceLinks    PartnerService[]
+  reports         Report[]
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  status      String   @default("Active")
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  partnerLinks PartnerService[]
+  reports      Report[]
+}
+
+model PartnerService {
+  partnerId String
+  serviceId String
+  createdAt DateTime @default(now())
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([partnerId, serviceId])
+}
+
+enum ReportType {
+  OPCO_MONTHLY
+  PARTNER_MONTHLY
+  CLIENT_CONSOLIDATED
+  FINAL_RS_CONFIRMATION
+}
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  ACCEPTED
+  REJECTED
+  SUPERSEDED
+  ARCHIVED
+}
+
+model Report {
+  id            String      @id @default(cuid())
+  type          ReportType
+  month         Int
+  year          Int
+  serviceId     String
+  opcoId        String?
+  partnerId     String?
+  reference     String?
+  fileName      String
+  filePath      String
+  fileMimeType  String?
+  version       Int         @default(1)
+  status        ReportStatus @default(SUBMITTED)
+  remarks       String?
+  submittedAt   DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  submittedById String
+
+  service       Service     @relation(fields: [serviceId], references: [id])
+  opco          OpCo?       @relation(fields: [opcoId], references: [id])
+  partner       Partner?    @relation(fields: [partnerId], references: [id])
+  submittedBy   User        @relation("ReportSubmitter", fields: [submittedById], references: [id])
+
+  @@index([type, month, year, serviceId, opcoId, partnerId])
+}
+
+model UserOpCo {
+  userId String
+  opcoId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opco OpCo @relation(fields: [opcoId], references: [id], onDelete: Cascade)
+
+  @@id([userId, opcoId])
+}
+
+model UserPartner {
+  userId    String
+  partnerId String
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@id([userId, partnerId])
+}
