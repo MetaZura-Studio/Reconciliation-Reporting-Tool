@@ -44,6 +44,7 @@ model User {
   opcoAssignments      UserOpCo[]
   partnerAssignments   UserPartner[]
   reportsSubmitted     Report[]   @relation("ReportSubmitter")
+  auditLogs            AuditLog[]
 }
 
 model OpCo {
@@ -62,6 +63,9 @@ model OpCo {
 
   userAssignments      UserOpCo[]
   reports              Report[]
+  reconciliations      Reconciliation[]
+  invoices             Invoice[]
+  collections          Collection[]
 }
 
 model Partner {
@@ -80,6 +84,9 @@ model Partner {
   userAssignments UserPartner[]
   serviceLinks    PartnerService[]
   reports         Report[]
+  reconciliations Reconciliation[]
+  invoices        Invoice[]
+  payments        Payment[]
 }
 
 model Service {
@@ -93,6 +100,8 @@ model Service {
 
   partnerLinks PartnerService[]
   reports      Report[]
+  reconciliations Reconciliation[]
+  invoices        Invoice[]
 }
 
 model PartnerService {
@@ -168,4 +177,185 @@ model UserPartner {
   partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@id([userId, partnerId])
+}
+
+// -------------------------
+// Dev 2: Financial Core
+// -------------------------
+
+enum ReconciliationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ReconciliationItemStatus {
+  MATCHED
+  MISMATCH
+  MISSING_IN_OPCO
+  MISSING_IN_PARTNER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  GENERATED
+  SENT
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSED
+  FAILED
+  REVERSED
+}
+
+model Reconciliation {
+  id              String               @id @default(cuid())
+  status          ReconciliationStatus @default(PENDING)
+  month           Int
+  year            Int
+  serviceId       String
+  opcoId          String?
+  partnerId       String?
+  remarks         String?
+
+  // Optional linkage to source reports (if/when workflow connects to Dev1 reports).
+  opcoReportId    String?
+  partnerReportId String?
+  clientReportId  String?
+
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  service         Service              @relation(fields: [serviceId], references: [id])
+  opco            OpCo?                @relation(fields: [opcoId], references: [id])
+  partner         Partner?             @relation(fields: [partnerId], references: [id])
+
+  items           ReconciliationItem[]
+  invoices        Invoice[]
+
+  @@index([year, month, serviceId, opcoId, partnerId])
+}
+
+model ReconciliationItem {
+  id               String                   @id @default(cuid())
+  reconciliationId String
+  status           ReconciliationItemStatus
+
+  // Generic identifiers; can be refined once report parsing is implemented.
+  reference        String?
+  opcoAmount       Decimal?
+  partnerAmount    Decimal?
+  difference       Decimal?
+  meta             Json?
+
+  createdAt        DateTime                 @default(now())
+
+  reconciliation   Reconciliation           @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+
+  @@index([reconciliationId, status])
+}
+
+model Invoice {
+  id               String        @id @default(cuid())
+  status           InvoiceStatus @default(DRAFT)
+  month            Int
+  year             Int
+  serviceId        String
+  opcoId           String
+  partnerId        String
+  reconciliationId String?
+
+  invoiceNumber    String?
+  currency         String?
+  amount           Decimal
+  remarks          String?
+
+  issuedAt         DateTime?
+  dueAt            DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  service          Service       @relation(fields: [serviceId], references: [id])
+  opco             OpCo          @relation(fields: [opcoId], references: [id])
+  partner          Partner       @relation(fields: [partnerId], references: [id])
+  reconciliation   Reconciliation? @relation(fields: [reconciliationId], references: [id])
+
+  collections      Collection[]
+  payments         Payment[]
+
+  @@index([year, month, serviceId, opcoId, partnerId])
+  @@index([status])
+}
+
+model Collection {
+  id          String   @id @default(cuid())
+  opcoId      String
+  invoiceId   String?
+  month       Int
+  year        Int
+  currency    String?
+  amount      Decimal
+  receivedAt  DateTime @default(now())
+  reference   String?
+  remarks     String?
+  meta        Json?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  opco        OpCo     @relation(fields: [opcoId], references: [id])
+  invoice     Invoice? @relation(fields: [invoiceId], references: [id])
+
+  @@index([year, month, opcoId])
+  @@index([invoiceId])
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  status      PaymentStatus @default(PENDING)
+  partnerId   String
+  invoiceId   String?
+  month       Int
+  year        Int
+  currency    String?
+  amount      Decimal
+  processedAt DateTime?
+  reference   String?
+  remarks     String?
+  meta        Json?
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  partner     Partner       @relation(fields: [partnerId], references: [id])
+  invoice     Invoice?      @relation(fields: [invoiceId], references: [id])
+
+  @@index([year, month, partnerId])
+  @@index([invoiceId])
+  @@index([status])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  message    String?
+  meta       Json?
+
+  createdAt  DateTime @default(now())
+
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([actorId])
 }
