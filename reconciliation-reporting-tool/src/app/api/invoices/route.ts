@@ -6,7 +6,37 @@ export async function GET() {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
 
+  // Security-critical scoping per Dev1 handoff:
+  // - PARTNER: only invoices for assigned partners (UserPartner)
+  // - OPCO: only invoices for assigned opcos (UserOpCo)
+  // - ADMIN/CLIENT: currently unrestricted (can be tightened later if desired)
+  const where =
+    auth.user.role === "PARTNER"
+      ? {
+          partnerId: {
+            in: (
+              await prisma.userPartner.findMany({
+                where: { userId: auth.user.id },
+                select: { partnerId: true },
+              })
+            ).map((x) => x.partnerId),
+          },
+        }
+      : auth.user.role === "OPCO"
+        ? {
+            opcoId: {
+              in: (
+                await prisma.userOpCo.findMany({
+                  where: { userId: auth.user.id },
+                  select: { opcoId: true },
+                })
+              ).map((x) => x.opcoId),
+            },
+          }
+        : {};
+
   const invoices = await prisma.invoice.findMany({
+    where,
     orderBy: { createdAt: "desc" },
     take: 50,
     select: {
