@@ -28,7 +28,26 @@ export default function ClientAuditPage() {
   }
 
   useEffect(() => {
-    void refresh();
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/audit", { cache: "no-store" });
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !data?.ok) {
+          setError(data?.message ?? "Failed to load audit logs");
+          return;
+        }
+        setError(null);
+        setRows(data.items ?? []);
+      } catch {
+        if (cancelled) return;
+        setError("Failed to load audit logs");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (

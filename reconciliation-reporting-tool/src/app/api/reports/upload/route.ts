@@ -81,6 +81,46 @@ export async function POST(req: Request) {
     );
   }
 
+  // Entity assignment enforcement
+  if (auth.user.role === "OPCO") {
+    if (!meta.opcoId) {
+      return NextResponse.json(
+        { ok: false, message: "OpCo is required for OpCo Monthly uploads" },
+        { status: 400 },
+      );
+    }
+    const assigned = await prisma.userOpCo.findUnique({
+      where: { userId_opcoId: { userId: auth.user.id, opcoId: meta.opcoId } },
+      select: { opcoId: true },
+    });
+    if (!assigned) {
+      return NextResponse.json(
+        { ok: false, message: "You are not assigned to this OpCo" },
+        { status: 403 },
+      );
+    }
+  }
+  if (auth.user.role === "PARTNER") {
+    if (!meta.partnerId) {
+      return NextResponse.json(
+        { ok: false, message: "Partner is required for Partner Monthly uploads" },
+        { status: 400 },
+      );
+    }
+    const assigned = await prisma.userPartner.findUnique({
+      where: {
+        userId_partnerId: { userId: auth.user.id, partnerId: meta.partnerId },
+      },
+      select: { partnerId: true },
+    });
+    if (!assigned) {
+      return NextResponse.json(
+        { ok: false, message: "You are not assigned to this Partner" },
+        { status: 403 },
+      );
+    }
+  }
+
   // Duplicate prevention (revision flow not implemented yet)
   const existing = await prisma.report.findFirst({
     where: {

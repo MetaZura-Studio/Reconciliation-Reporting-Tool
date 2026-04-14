@@ -1,8 +1,155 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+
+type OpCo = { id: string; code: string; name: string };
+type ReportRow = {
+  id: string;
+  month: number;
+  year: number;
+  status: string;
+  fileName: string;
+  submittedAt: string;
+  service: { code: string };
+  opco: { code: string } | null;
+};
+
 export default function OpCoDashboardPage() {
+  const [opcos, setOpCos] = useState<OpCo[]>([]);
+  const [activeOpcoId, setActiveOpcoId] = useState<string>("");
+  const [reports, setReports] = useState<ReportRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      setError(null);
+      const res = await fetch("/api/users/me/assignments", { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok || !json?.ok) {
+        setError(json?.message ?? "Failed to load assignments");
+        return;
+      }
+      setOpCos(json.opcos ?? []);
+      if ((json.opcos ?? []).length > 0) setActiveOpcoId(json.opcos[0]!.id);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!activeOpcoId) return;
+    void (async () => {
+      setError(null);
+      const params = new URLSearchParams({
+        type: "OPCO_MONTHLY",
+        opcoId: activeOpcoId,
+      });
+      const res = await fetch(`/api/reports?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.ok) {
+        setError(json?.message ?? "Failed to load reports");
+        return;
+      }
+      setReports((json.reports ?? []).slice(0, 5));
+    })();
+  }, [activeOpcoId]);
+
   return (
-    <div className="space-y-2">
-      <h1 className="text-xl font-semibold">OpCo Dashboard</h1>
-      <p className="text-sm text-zinc-600">Placeholder (Developer 1)</p>
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <h1 className="text-xl font-semibold">OpCo Dashboard</h1>
+        <p className="text-sm text-zinc-600">Quick links and recent activity.</p>
+      </div>
+
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Link
+          href="/opco/reports"
+          className="rounded-xl border bg-white p-5 hover:bg-zinc-50"
+        >
+          <div className="text-sm font-semibold text-zinc-900">Reports</div>
+          <div className="mt-1 text-sm text-zinc-600">
+            Upload and view OpCo Monthly reports.
+          </div>
+        </Link>
+        <div className="rounded-xl border bg-white p-5">
+          <div className="text-sm font-semibold text-zinc-900">Assignments</div>
+          <div className="mt-1 text-sm text-zinc-600">
+            {opcos.length} OpCo(s) assigned
+          </div>
+        </div>
+        <div className="rounded-xl border bg-white p-5">
+          <div className="text-sm font-semibold text-zinc-900">Invoices</div>
+          <div className="mt-1 text-sm text-zinc-600">Coming next.</div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-sm font-semibold text-zinc-900">Recent reports</div>
+            <div className="text-sm text-zinc-600">
+              Latest uploads for your selected OpCo.
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              className="h-9 rounded-md border px-2 text-sm"
+              value={activeOpcoId}
+              onChange={(e) => setActiveOpcoId(e.target.value)}
+              disabled={opcos.length === 0}
+            >
+              {opcos.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.code} - {o.name}
+                </option>
+              ))}
+            </select>
+            <Link
+              href="/opco/reports"
+              className="rounded-md border px-3 py-1.5 text-sm hover:bg-zinc-50"
+            >
+              View all
+            </Link>
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-auto rounded-lg border">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-zinc-50 text-xs text-zinc-600">
+              <tr>
+                <th className="px-3 py-2">Period</th>
+                <th className="px-3 py-2">Service</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Submitted</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reports.map((r) => (
+                <tr key={r.id} className="border-t">
+                  <td className="px-3 py-2">
+                    {String(r.month).padStart(2, "0")}/{r.year}
+                  </td>
+                  <td className="px-3 py-2">{r.service.code}</td>
+                  <td className="px-3 py-2">{r.status}</td>
+                  <td className="px-3 py-2">
+                    {new Date(r.submittedAt).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+              {reports.length === 0 ? (
+                <tr>
+                  <td className="px-3 py-6 text-sm text-zinc-600" colSpan={4}>
+                    No reports yet.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

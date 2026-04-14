@@ -18,12 +18,28 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [opcos, setOpCos] = useState<{ id: string; code: string; name: string }[]>(
+    [],
+  );
+  const [partners, setPartners] = useState<
+    { id: string; code: string; name: string }[]
+  >([]);
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<UserRow["role"]>("OPCO");
   const [status, setStatus] = useState<UserRow["status"]>("ACTIVE");
   const [tempPassword, setTempPassword] = useState("Temp@12345");
   const [createdPassword, setCreatedPassword] = useState<string | null>(null);
+
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
+  const selectedUser = useMemo(
+    () => users.find((u) => u.id === selectedUserId) ?? null,
+    [selectedUserId, users],
+  );
+  const [assignedOpcoIds, setAssignedOpcoIds] = useState<string[]>([]);
+  const [assignedPartnerIds, setAssignedPartnerIds] = useState<string[]>([]);
+  const [savingAssignments, setSavingAssignments] = useState(false);
 
   const sorted = useMemo(
     () => [...users].sort((a, b) => a.email.localeCompare(b.email)),
@@ -34,7 +50,12 @@ export default function AdminUsersPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/users");
+      const [res, oRes, pRes] = await Promise.all([
+        fetch("/api/users"),
+        fetch("/api/masters/opcos"),
+        fetch("/api/masters/partners"),
+      ]);
+
       const json = (await res.json()) as
         | { ok: true; users: UserRow[] }
         | { ok: false; message?: string };
@@ -43,6 +64,16 @@ export default function AdminUsersPage() {
         return;
       }
       setUsers(json.users);
+
+      const oJson = (await oRes.json()) as
+        | { ok: true; opcos: { id: string; code: string; name: string }[] }
+        | { ok: false };
+      if (oRes.ok && oJson.ok) setOpCos(oJson.opcos);
+
+      const pJson = (await pRes.json()) as
+        | { ok: true; partners: { id: string; code: string; name: string }[] }
+        | { ok: false };
+      if (pRes.ok && pJson.ok) setPartners(pJson.partners);
     } catch {
       setError("Network error");
     } finally {
@@ -53,6 +84,27 @@ export default function AdminUsersPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    if (!selectedUserId && users.length > 0) setSelectedUserId(users[0]!.id);
+  }, [selectedUserId, users]);
+
+  useEffect(() => {
+    if (!selectedUserId) return;
+    void (async () => {
+      setError(null);
+      try {
+        const [o, p] = await Promise.all([
+          fetch(`/api/users/${selectedUserId}/opcos`).then((r) => r.json()),
+          fetch(`/api/users/${selectedUserId}/partners`).then((r) => r.json()),
+        ]);
+        if (o?.ok) setAssignedOpcoIds(o.opcoIds ?? []);
+        if (p?.ok) setAssignedPartnerIds(p.partnerIds ?? []);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load assignments");
+      }
+    })();
+  }, [selectedUserId]);
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault();
@@ -111,12 +163,43 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function saveAssignments() {
+    if (!selectedUserId) return;
+    setSavingAssignments(true);
+    setError(null);
+    try {
+      const [oRes, pRes] = await Promise.all([
+        fetch(`/api/users/${selectedUserId}/opcos`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ opcoIds: assignedOpcoIds }),
+        }),
+        fetch(`/api/users/${selectedUserId}/partners`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ partnerIds: assignedPartnerIds }),
+        }),
+      ]);
+      const [oJson, pJson] = await Promise.all([oRes.json(), pRes.json()]);
+      if (!oRes.ok || !oJson.ok) {
+        throw new Error(oJson.message || "Failed to save OpCo assignments");
+      }
+      if (!pRes.ok || !pJson.ok) {
+        throw new Error(pJson.message || "Failed to save Partner assignments");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save assignments");
+    } finally {
+      setSavingAssignments(false);
+    }
+  }
+
   return (
     <div className="space-y-2">
       <h1 className="text-xl font-semibold">Users</h1>
       <p className="text-sm text-zinc-600">Create and manage users (Admin only).</p>
 
-      <div className="grid gap-6 pt-4 lg:grid-cols-2">
+      <div className="grid gap-6 pt-4 lg:grid-cols-3">
         <div className="rounded-xl border bg-white p-5">
           <h2 className="text-sm font-semibold text-zinc-900">Create user</h2>
           <form className="mt-4 space-y-3" onSubmit={createUser}>
@@ -264,6 +347,129 @@ export default function AdminUsersPage() {
               </table>
             </div>
           )}
+        </div>
+
+        <div className="rounded-xl border bg-white p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-zinc-900">Assignments</h2>
+            <button
+              type="button"
+              className="h-9 rounded-md bg-black px-3 text-sm font-medium text-white disabled:opacity-60"
+              onClick={() => void saveAssignments()}
+              disabled={!selectedUserId || savingAssignments}
+            >
+              {savingAssignments ? "Saving..." : "Save"}
+            </button>
+          </div>
+
+          {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+
+          <div className="mt-4 space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">User</label>
+              <select
+                className="h-10 w-full rounded-md border px-3 text-sm"
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                disabled={users.length === 0}
+              >
+                {sorted.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.email} ({u.role})
+                  </option>
+                ))}
+              </select>
+              {selectedUser ? (
+                <div className="text-xs text-zinc-600">
+                  {selectedUser.fullName} • {selectedUser.status}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">OpCo assignments</div>
+              <div className="max-h-52 space-y-1 overflow-auto rounded-md border p-2">
+                {opcos.map((o) => {
+                  const checked = assignedOpcoIds.includes(o.id);
+                  const disabled = selectedUser?.role !== "OPCO";
+                  return (
+                    <label
+                      key={o.id}
+                      className={`flex items-center gap-2 rounded px-2 py-1 text-sm ${
+                        disabled ? "opacity-50" : "hover:bg-zinc-50"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...assignedOpcoIds, o.id]
+                            : assignedOpcoIds.filter((x) => x !== o.id);
+                          setAssignedOpcoIds(next);
+                        }}
+                      />
+                      <span className="font-mono text-xs">{o.code}</span>
+                      <span className="text-zinc-600">{o.name}</span>
+                    </label>
+                  );
+                })}
+                {opcos.length === 0 ? (
+                  <div className="px-2 py-1 text-sm text-zinc-600">
+                    No OpCos yet.
+                  </div>
+                ) : null}
+              </div>
+              {selectedUser?.role !== "OPCO" ? (
+                <div className="text-xs text-zinc-500">
+                  OpCo assignments apply only to users with role OPCO.
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Partner assignments</div>
+              <div className="max-h-52 space-y-1 overflow-auto rounded-md border p-2">
+                {partners.map((p) => {
+                  const checked = assignedPartnerIds.includes(p.id);
+                  const disabled = selectedUser?.role !== "PARTNER";
+                  return (
+                    <label
+                      key={p.id}
+                      className={`flex items-center gap-2 rounded px-2 py-1 text-sm ${
+                        disabled ? "opacity-50" : "hover:bg-zinc-50"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...assignedPartnerIds, p.id]
+                            : assignedPartnerIds.filter((x) => x !== p.id);
+                          setAssignedPartnerIds(next);
+                        }}
+                      />
+                      <span className="font-mono text-xs">{p.code}</span>
+                      <span className="text-zinc-600">{p.name}</span>
+                    </label>
+                  );
+                })}
+                {partners.length === 0 ? (
+                  <div className="px-2 py-1 text-sm text-zinc-600">
+                    No Partners yet.
+                  </div>
+                ) : null}
+              </div>
+              {selectedUser?.role !== "PARTNER" ? (
+                <div className="text-xs text-zinc-500">
+                  Partner assignments apply only to users with role PARTNER.
+                </div>
+              ) : null}
+            </div>
+          </div>
         </div>
       </div>
     </div>

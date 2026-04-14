@@ -26,6 +26,12 @@ enum UserStatus {
   LOCKED
 }
 
+enum NotificationChannel {
+  EMAIL
+  SMS
+  IN_APP
+}
+
 model User {
   id                   String     @id @default(cuid())
   fullName             String
@@ -45,6 +51,11 @@ model User {
   partnerAssignments   UserPartner[]
   reportsSubmitted     Report[]   @relation("ReportSubmitter")
   auditLogs            AuditLog[]
+  passwordResets       PasswordResetToken[]
+  passwordHistory      PasswordHistory[]
+
+  notificationLogs     NotificationLog[] @relation("NotificationRecipient")
+  partnerInvoiceUploads PartnerInvoiceUpload[]
 }
 
 model OpCo {
@@ -87,6 +98,7 @@ model Partner {
   reconciliations Reconciliation[]
   invoices        Invoice[]
   payments        Payment[]
+  partnerInvoiceUploads PartnerInvoiceUpload[]
 }
 
 model Service {
@@ -102,6 +114,7 @@ model Service {
   reports      Report[]
   reconciliations Reconciliation[]
   invoices        Invoice[]
+  partnerInvoiceUploads PartnerInvoiceUpload[]
 }
 
 model PartnerService {
@@ -177,6 +190,105 @@ model UserPartner {
   partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@id([userId, partnerId])
+}
+
+model PasswordResetToken {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordHistory {
+  id           String   @id @default(cuid())
+  userId       String
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model NotificationTemplate {
+  id        String              @id @default(cuid())
+  name      String              @unique
+  channel   NotificationChannel
+  subject   String?
+  body      String
+  isActive  Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  reminders ReminderSetting[]
+}
+
+enum ReminderTargetRole {
+  OPCO
+  PARTNER
+}
+
+model ReminderSetting {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  targetRole        ReminderTargetRole
+  reportType        ReportType
+  daysBeforeDue     Int      @default(3)
+  repeatEveryDays   Int?     // null = no repeats
+  isActive          Boolean  @default(true)
+  templateId        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  template          NotificationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+}
+
+model NotificationLog {
+  id           String              @id @default(cuid())
+  channel      NotificationChannel
+  templateName String?
+  subject      String?
+  body         String
+  recipientId  String?
+  recipientTo  String?
+  status       String              @default("QUEUED")
+  error        String?
+  sentAt       DateTime?
+  createdAt    DateTime            @default(now())
+
+  recipient    User?               @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([recipientId])
+}
+
+model PartnerInvoiceUpload {
+  id           String   @id @default(cuid())
+  partnerId    String
+  serviceId    String
+  month        Int
+  year         Int
+  reference    String?
+  fileName     String
+  filePath     String
+  fileMimeType String?
+  remarks      String?
+  submittedAt  DateTime @default(now())
+  submittedById String
+
+  partner      Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  service      Service  @relation(fields: [serviceId], references: [id])
+  submittedBy  User     @relation(fields: [submittedById], references: [id], onDelete: Cascade)
+
+  @@index([year, month, partnerId, serviceId])
 }
 
 // -------------------------

@@ -56,9 +56,39 @@ export async function GET(req: Request) {
     ...(q.status ? { status: q.status } : {}),
   };
 
-  // Safe restriction: non-admin can only see their own submissions for now.
-  if (auth.user.role !== "ADMIN" && auth.user.role !== "CLIENT") {
-    where.submittedById = auth.user.id;
+  // Role + assignment scoping
+  if (auth.user.role === "OPCO") {
+    const rows = await prisma.userOpCo.findMany({
+      where: { userId: auth.user.id },
+      select: { opcoId: true },
+    });
+    const assignedOpcoIds = rows.map((r) => r.opcoId);
+
+    if (q.opcoId && !assignedOpcoIds.includes(q.opcoId)) {
+      return NextResponse.json(
+        { ok: false, message: "Not authorized for this OpCo" },
+        { status: 403 },
+      );
+    }
+
+    where.type = where.type ?? "OPCO_MONTHLY";
+    where.opcoId = q.opcoId ?? { in: assignedOpcoIds };
+  } else if (auth.user.role === "PARTNER") {
+    const rows = await prisma.userPartner.findMany({
+      where: { userId: auth.user.id },
+      select: { partnerId: true },
+    });
+    const assignedPartnerIds = rows.map((r) => r.partnerId);
+
+    if (q.partnerId && !assignedPartnerIds.includes(q.partnerId)) {
+      return NextResponse.json(
+        { ok: false, message: "Not authorized for this Partner" },
+        { status: 403 },
+      );
+    }
+
+    where.type = where.type ?? "PARTNER_MONTHLY";
+    where.partnerId = q.partnerId ?? { in: assignedPartnerIds };
   }
 
   const reports = await prisma.report.findMany({
