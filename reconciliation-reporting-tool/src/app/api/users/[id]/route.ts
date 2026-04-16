@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/app/api/_utils/authz";
+import { writeAudit } from "@/modules/audit/logger";
 
 const PatchSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE", "LOCKED"]).optional(),
   fullName: z.string().min(1).max(150).optional(),
   mobile: z.string().max(20).nullable().optional(),
+  role: z.enum(["ADMIN", "CLIENT", "OPCO", "PARTNER"]).optional(),
 });
 
 export async function PATCH(
@@ -37,6 +39,15 @@ export async function PATCH(
       status: true,
       updatedAt: true,
     },
+  });
+
+  await writeAudit({
+    actorId: auth.user.id,
+    action: "USER_UPDATE",
+    entityType: "User",
+    entityId: user.id,
+    message: "User updated",
+    meta: parsed.data,
   });
 
   return NextResponse.json({ ok: true, user });

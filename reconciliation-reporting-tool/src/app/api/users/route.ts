@@ -3,6 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/app/api/_utils/authz";
+import { writeAudit } from "@/modules/audit/logger";
 
 const CreateUserSchema = z.object({
   fullName: z.string().min(1).max(150),
@@ -70,6 +71,15 @@ export async function POST(req: Request) {
         status: true,
         createdAt: true,
       },
+    });
+
+    await writeAudit({
+      actorId: auth.user.id,
+      action: "USER_CREATE",
+      entityType: "User",
+      entityId: user.id,
+      message: "User created",
+      meta: { email: user.email, role: user.role, status: user.status },
     });
 
     return NextResponse.json({ ok: true, user, temporaryPassword: password });

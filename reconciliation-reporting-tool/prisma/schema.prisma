@@ -32,6 +32,16 @@ enum NotificationChannel {
   IN_APP
 }
 
+enum ReminderTriggerEvent {
+  REPORT_SUBMISSION_DUE
+}
+
+enum ReminderTriggerTiming {
+  BEFORE_DUE
+  AFTER_DUE
+  INSTANT
+}
+
 model User {
   id                   String     @id @default(cuid())
   fullName             String
@@ -77,6 +87,7 @@ model OpCo {
   reconciliations      Reconciliation[]
   invoices             Invoice[]
   collections          Collection[]
+  partnerInvoiceUploads PartnerInvoiceUpload[]
 }
 
 model Partner {
@@ -240,6 +251,10 @@ model ReminderSetting {
   name              String   @unique
   targetRole        ReminderTargetRole
   reportType        ReportType
+  triggerEvent      ReminderTriggerEvent @default(REPORT_SUBMISSION_DUE)
+  triggerTiming     ReminderTriggerTiming @default(BEFORE_DUE)
+  daysOffset        Int      @default(3)
+  // Back-compat with earlier iteration; keep in sync with daysOffset for now.
   daysBeforeDue     Int      @default(3)
   repeatEveryDays   Int?     // null = no repeats
   isActive          Boolean  @default(true)
@@ -273,9 +288,14 @@ model NotificationLog {
 model PartnerInvoiceUpload {
   id           String   @id @default(cuid())
   partnerId    String
+  opcoId       String?
   serviceId    String
   month        Int
   year         Int
+  invoiceNumber String?
+  invoiceDate  DateTime?
+  currency     String?
+  amount       Decimal?
   reference    String?
   fileName     String
   filePath     String
@@ -285,10 +305,13 @@ model PartnerInvoiceUpload {
   submittedById String
 
   partner      Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  opco         OpCo?    @relation(fields: [opcoId], references: [id], onDelete: SetNull)
   service      Service  @relation(fields: [serviceId], references: [id])
   submittedBy  User     @relation(fields: [submittedById], references: [id], onDelete: Cascade)
 
   @@index([year, month, partnerId, serviceId])
+  @@index([invoiceNumber])
+  @@unique([partnerId, invoiceNumber, year, month, serviceId])
 }
 
 // -------------------------

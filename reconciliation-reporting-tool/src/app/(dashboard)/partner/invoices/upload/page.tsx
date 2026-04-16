@@ -5,15 +5,24 @@ import { useEffect, useState } from "react";
 
 type Service = { id: string; code: string; name: string };
 type Partner = { id: string; code: string; name: string };
+type OpCo = { id: string; code: string; name: string };
 
 export default function PartnerInvoiceUploadPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
+  const [opcos, setOpCos] = useState<OpCo[]>([]);
 
   const [partnerId, setPartnerId] = useState("");
+  const [opcoId, setOpCoId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [month, setMonth] = useState<number>(new Date().getMonth() + 1);
   const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState<string>(() =>
+    new Date().toISOString().slice(0, 10),
+  );
+  const [currency, setCurrency] = useState("");
+  const [amount, setAmount] = useState<string>("");
   const [reference, setReference] = useState("");
   const [remarks, setRemarks] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -26,14 +35,17 @@ export default function PartnerInvoiceUploadPage() {
     void (async () => {
       setError(null);
       try {
-        const [s, a] = await Promise.all([
+        const [s, o, a] = await Promise.all([
           fetch("/api/masters/services").then((r) => r.json()),
+          fetch("/api/masters/opcos").then((r) => r.json()),
           fetch("/api/users/me/assignments").then((r) => r.json()),
         ]);
         if (s?.ok) setServices(s.services ?? []);
+        if (o?.ok) setOpCos(o.opcos ?? []);
         if (a?.ok) setPartners(a.partners ?? []);
         if (!serviceId && (s.services ?? []).length > 0) setServiceId(s.services[0]!.id);
         if (!partnerId && (a.partners ?? []).length > 0) setPartnerId(a.partners[0]!.id);
+        if (!opcoId && (o.opcos ?? []).length > 0) setOpCoId(o.opcos[0]!.id);
       } catch {
         setError("Failed to load");
       }
@@ -45,7 +57,13 @@ export default function PartnerInvoiceUploadPage() {
     e.preventDefault();
     if (!file) return setError("File is required");
     if (!partnerId) return setError("Partner is required");
+    if (!opcoId) return setError("Related OpCo is required");
     if (!serviceId) return setError("Service is required");
+    if (!invoiceNumber.trim()) return setError("Invoice number is required");
+    if (!invoiceDate) return setError("Invoice date is required");
+    if (!currency.trim()) return setError("Currency is required");
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) return setError("Amount must be > 0");
 
     setBusy(true);
     setError(null);
@@ -53,9 +71,14 @@ export default function PartnerInvoiceUploadPage() {
     try {
       const meta = {
         partnerId,
+        opcoId,
         serviceId,
         month,
         year,
+        invoiceNumber: invoiceNumber.trim(),
+        invoiceDate: new Date(invoiceDate).toISOString(),
+        currency: currency.trim().toUpperCase(),
+        amount: amt,
         reference: reference || null,
         remarks: remarks || null,
       };
@@ -73,6 +96,8 @@ export default function PartnerInvoiceUploadPage() {
       setFile(null);
       setReference("");
       setRemarks("");
+      setInvoiceNumber("");
+      setAmount("");
       setDone("Uploaded.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -112,6 +137,21 @@ export default function PartnerInvoiceUploadPage() {
               </select>
             </div>
             <div className="space-y-1">
+              <label className="text-sm font-medium">Related OpCo</label>
+              <select
+                className="h-10 w-full rounded-md border px-3 text-sm"
+                value={opcoId}
+                onChange={(e) => setOpCoId(e.target.value)}
+                disabled={opcos.length === 0}
+              >
+                {opcos.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.code} - {o.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
               <label className="text-sm font-medium">Service</label>
               <select
                 className="h-10 w-full rounded-md border px-3 text-sm"
@@ -124,6 +164,52 @@ export default function PartnerInvoiceUploadPage() {
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Invoice number</label>
+              <input
+                className="h-10 w-full rounded-md border px-3 text-sm"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Invoice date</label>
+              <input
+                type="date"
+                className="h-10 w-full rounded-md border px-3 text-sm"
+                value={invoiceDate}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Currency</label>
+              <input
+                className="h-10 w-full rounded-md border px-3 text-sm"
+                placeholder="e.g. USD"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Amount</label>
+              <input
+                className="h-10 w-full rounded-md border px-3 text-sm"
+                inputMode="decimal"
+                placeholder="e.g. 1234.56"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                required
+              />
             </div>
           </div>
 

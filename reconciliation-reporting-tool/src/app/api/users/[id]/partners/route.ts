@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/app/api/_utils/authz";
+import { writeAudit } from "@/modules/audit/logger";
 
 const BodySchema = z.object({
   partnerIds: z.array(z.string().min(1)).default([]),
@@ -55,6 +56,15 @@ export async function PUT(
         ]
       : []),
   ]);
+
+  await writeAudit({
+    actorId: auth.user.id,
+    action: "USER_ASSIGN_PARTNER",
+    entityType: "User",
+    entityId: userId,
+    message: "Updated user Partner assignments",
+    meta: { partnerIds },
+  });
 
   return NextResponse.json({ ok: true });
 }

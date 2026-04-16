@@ -30,6 +30,8 @@ export default function AdminNotificationsPage() {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [runResult, setRunResult] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [channel, setChannel] = useState<TemplateRow["channel"]>("EMAIL");
@@ -57,6 +59,27 @@ export default function AdminNotificationsPage() {
   useEffect(() => {
     void load().catch(() => setError("Failed to load"));
   }, []);
+
+  async function runRemindersNow() {
+    setRunning(true);
+    setError(null);
+    setRunResult(null);
+    try {
+      const res = await fetch("/api/notifications/run", { method: "POST" });
+      const json = (await res.json()) as
+        | { ok: true; created: number; skipped: number }
+        | { ok: false; message?: string };
+      if (!res.ok || !json.ok) {
+        throw new Error(("message" in json && json.message) || "Run failed");
+      }
+      setRunResult(`Created ${json.created}, skipped ${json.skipped}`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Run failed");
+    } finally {
+      setRunning(false);
+    }
+  }
 
   async function createTemplate(e: React.FormEvent) {
     e.preventDefault();
@@ -114,6 +137,7 @@ export default function AdminNotificationsPage() {
       </p>
 
       {error ? <p className="pt-2 text-sm text-red-600">{error}</p> : null}
+      {runResult ? <p className="pt-2 text-sm text-emerald-700">{runResult}</p> : null}
 
       <div className="grid gap-6 pt-4 lg:grid-cols-2">
         <div className="rounded-xl border bg-white p-5">
@@ -172,13 +196,23 @@ export default function AdminNotificationsPage() {
         <div className="rounded-xl border bg-white p-5">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-zinc-900">Templates</h2>
-            <button
-              type="button"
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-zinc-50"
-              onClick={() => void load().catch(() => setError("Failed to refresh"))}
-            >
-              Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-md bg-black px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+                disabled={running}
+                onClick={() => void runRemindersNow()}
+              >
+                {running ? "Running..." : "Run reminders now"}
+              </button>
+              <button
+                type="button"
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-zinc-50"
+                onClick={() => void load().catch(() => setError("Failed to refresh"))}
+              >
+                Refresh
+              </button>
+            </div>
           </div>
           <div className="mt-4 overflow-auto rounded-lg border">
             <table className="min-w-full text-left text-sm">

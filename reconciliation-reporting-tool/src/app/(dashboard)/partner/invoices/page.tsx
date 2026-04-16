@@ -7,10 +7,15 @@ type UploadRow = {
   id: string;
   month: number;
   year: number;
+  invoiceNumber: string | null;
+  invoiceDate: string | null;
+  currency: string | null;
+  amount: string | null;
   reference: string | null;
   fileName: string;
   submittedAt: string;
   service: { id: string; code: string; name: string };
+  opco: { id: string; code: string; name: string } | null;
   partner: { id: string; code: string; name: string };
 };
 
@@ -115,7 +120,11 @@ export default function PartnerInvoicesPage() {
                 <tr>
                   <th className="px-3 py-2">Period</th>
                   <th className="px-3 py-2">Partner</th>
+                  <th className="px-3 py-2">OpCo</th>
                   <th className="px-3 py-2">Service</th>
+                  <th className="px-3 py-2">Invoice #</th>
+                  <th className="px-3 py-2">Invoice date</th>
+                  <th className="px-3 py-2">Amount</th>
                   <th className="px-3 py-2">Reference</th>
                   <th className="px-3 py-2">Submitted</th>
                   <th className="px-3 py-2"></th>
@@ -128,7 +137,15 @@ export default function PartnerInvoicesPage() {
                       {String(u.month).padStart(2, "0")}/{u.year}
                     </td>
                     <td className="px-3 py-2">{u.partner.code}</td>
+                    <td className="px-3 py-2">{u.opco?.code ?? "-"}</td>
                     <td className="px-3 py-2">{u.service.code}</td>
+                    <td className="px-3 py-2">{u.invoiceNumber ?? "-"}</td>
+                    <td className="px-3 py-2">
+                      {u.invoiceDate ? new Date(u.invoiceDate).toLocaleDateString() : "-"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {u.amount ? `${u.amount} ${u.currency ?? ""}` : "-"}
+                    </td>
                     <td className="px-3 py-2">{u.reference ?? "-"}</td>
                     <td className="px-3 py-2">
                       {new Date(u.submittedAt).toLocaleString()}
@@ -145,7 +162,7 @@ export default function PartnerInvoicesPage() {
                 ))}
                 {uploads.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-6 text-sm text-zinc-600" colSpan={6}>
+                    <td className="px-3 py-6 text-sm text-zinc-600" colSpan={9}>
                       No uploads yet.
                     </td>
                   </tr>

@@ -29,6 +29,10 @@ const QuerySchema = z.object({
       "ARCHIVED",
     ])
     .optional(),
+  q: z.string().trim().min(1).optional(),
+  submittedBy: z.string().trim().min(1).optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
 });
 
 export async function GET(req: Request) {
@@ -54,7 +58,31 @@ export async function GET(req: Request) {
     ...(q.opcoId ? { opcoId: q.opcoId } : {}),
     ...(q.partnerId ? { partnerId: q.partnerId } : {}),
     ...(q.status ? { status: q.status } : {}),
+    ...(q.from || q.to
+      ? {
+          submittedAt: {
+            ...(q.from ? { gte: new Date(q.from) } : {}),
+            ...(q.to ? { lte: new Date(q.to) } : {}),
+          },
+        }
+      : {}),
   };
+
+  if (q.q) {
+    where.OR = [
+      { fileName: { contains: q.q } },
+      { reference: { contains: q.q } },
+    ];
+  }
+
+  if (q.submittedBy) {
+    where.submittedBy = {
+      OR: [
+        { email: { contains: q.submittedBy } },
+        { fullName: { contains: q.submittedBy } },
+      ],
+    };
+  }
 
   // Role + assignment scoping
   if (auth.user.role === "OPCO") {

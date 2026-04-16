@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/app/api/_utils/requireUser";
 import { saveUploadedFile } from "@/lib/uploads";
+import { writeAudit } from "@/modules/audit/logger";
 
 const MetaSchema = z.object({
   type: z.enum([
@@ -121,7 +122,7 @@ export async function POST(req: Request) {
     }
   }
 
-  // Duplicate prevention (revision flow not implemented yet)
+  // Revision flow: if a report exists for the same business key, supersede it and create a new version.
   const existing = await prisma.report.findFirst({
     where: {
       type: meta.type,
@@ -132,14 +133,9 @@ export async function POST(req: Request) {
       partnerId: meta.partnerId ?? null,
       status: { notIn: ["ARCHIVED", "SUPERSEDED"] },
     },
-    select: { id: true },
+    orderBy: { version: "desc" },
+    select: { id: true, version: true },
   });
-  if (existing) {
-    return NextResponse.json(
-      { ok: false, message: "Duplicate report for same key is not allowed" },
-      { status: 409 },
-    );
-  }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   const { fileName, fullPath } = await saveUploadedFile({
@@ -148,23 +144,51 @@ export async function POST(req: Request) {
     bytes,
   });
 
-  const report = await prisma.report.create({
-    data: {
+  const report = await prisma.$transaction(async (tx) => {
+    if (existing) {
+      await tx.report.update({
+        where: { id: existing.id },
+        data: { status: "SUPERSEDED" },
+        select: { id: true },
+      });
+    }
+
+    return await tx.report.create({
+      data: {
+        type: meta.type,
+        month: meta.month,
+        year: meta.year,
+        serviceId: meta.serviceId,
+        opcoId: meta.opcoId ?? null,
+        partnerId: meta.partnerId ?? null,
+        reference: meta.reference ?? null,
+        remarks: meta.remarks ?? null,
+        fileName,
+        filePath: fullPath,
+        fileMimeType: file.type || null,
+        version: existing ? existing.version + 1 : 1,
+        status: "SUBMITTED",
+        submittedById: auth.user.id,
+      },
+      select: { id: true },
+    });
+  });
+
+  await writeAudit({
+    actorId: auth.user.id,
+    action: existing ? "REPORT_UPLOAD_REVISION" : "REPORT_UPLOAD",
+    entityType: "Report",
+    entityId: report.id,
+    message: existing ? "Report revision uploaded" : "Report uploaded",
+    meta: {
       type: meta.type,
       month: meta.month,
       year: meta.year,
       serviceId: meta.serviceId,
       opcoId: meta.opcoId ?? null,
       partnerId: meta.partnerId ?? null,
-      reference: meta.reference ?? null,
-      remarks: meta.remarks ?? null,
-      fileName,
-      filePath: fullPath,
-      fileMimeType: file.type || null,
-      status: "SUBMITTED",
-      submittedById: auth.user.id,
+      version: existing ? existing.version + 1 : 1,
     },
-    select: { id: true },
   });
 
   return NextResponse.json({ ok: true, reportId: report.id });

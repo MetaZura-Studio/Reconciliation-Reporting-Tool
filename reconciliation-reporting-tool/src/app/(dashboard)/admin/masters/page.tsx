@@ -2,9 +2,36 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-type OpCo = { id: string; code: string; name: string; status: string };
-type Partner = { id: string; code: string; name: string; status: string };
-type Service = { id: string; code: string; name: string; status: string };
+type OpCo = {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+  country?: string | null;
+  currency?: string | null;
+  primaryContactName?: string | null;
+  primaryContactEmail?: string | null;
+  primaryContactPhone?: string | null;
+  remarks?: string | null;
+};
+type Partner = {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+  defaultCurrency?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  remarks?: string | null;
+};
+type Service = {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+  description?: string | null;
+};
 type PartnerServiceLink = {
   partnerId: string;
   serviceId: string;
@@ -30,7 +57,25 @@ export default function AdminMastersPage() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [editCode, setEditCode] = useState("");
   const [editName, setEditName] = useState("");
-  const [editStatus, setEditStatus] = useState("Active");
+  const [editStatus, setEditStatus] = useState<"Active" | "Inactive">("Active");
+
+  // OpCo extended fields
+  const [opcoCountry, setOpCoCountry] = useState("");
+  const [opcoCurrency, setOpCoCurrency] = useState("");
+  const [opcoContactName, setOpCoContactName] = useState("");
+  const [opcoContactEmail, setOpCoContactEmail] = useState("");
+  const [opcoContactPhone, setOpCoContactPhone] = useState("");
+  const [opcoRemarks, setOpCoRemarks] = useState("");
+
+  // Partner extended fields
+  const [partnerDefaultCurrency, setPartnerDefaultCurrency] = useState("");
+  const [partnerContactName, setPartnerContactName] = useState("");
+  const [partnerContactEmail, setPartnerContactEmail] = useState("");
+  const [partnerContactPhone, setPartnerContactPhone] = useState("");
+  const [partnerRemarks, setPartnerRemarks] = useState("");
+
+  // Service extended fields
+  const [serviceDescription, setServiceDescription] = useState("");
 
   const [linkPartnerId, setLinkPartnerId] = useState("");
   const [linkServiceId, setLinkServiceId] = useState("");
@@ -68,16 +113,41 @@ export default function AdminMastersPage() {
   useEffect(() => {
     if (tab === "partnerServices") return;
     if (!selectedId && activeList.length > 0) setSelectedId(activeList[0]!.id);
-  }, [activeList, selectedId, tab]);
+  }, [activeList, selectedId, tab, opcos, partners, services]);
 
   useEffect(() => {
     if (tab === "partnerServices") return;
-    const row = activeList.find((x) => x.id === selectedId);
+    const row =
+      tab === "opcos"
+        ? opcos.find((x) => x.id === selectedId)
+        : tab === "partners"
+          ? partners.find((x) => x.id === selectedId)
+          : services.find((x) => x.id === selectedId);
     if (!row) return;
-    setEditCode(row.code);
-    setEditName(row.name);
-    setEditStatus(row.status);
-  }, [activeList, selectedId, tab]);
+    setEditCode(row.code ?? "");
+    setEditName(row.name ?? "");
+    setEditStatus(row.status === "Inactive" ? "Inactive" : "Active");
+
+    if (tab === "opcos") {
+      const o = row as OpCo;
+      setOpCoCountry(o.country ?? "");
+      setOpCoCurrency(o.currency ?? "");
+      setOpCoContactName(o.primaryContactName ?? "");
+      setOpCoContactEmail(o.primaryContactEmail ?? "");
+      setOpCoContactPhone(o.primaryContactPhone ?? "");
+      setOpCoRemarks(o.remarks ?? "");
+    } else if (tab === "partners") {
+      const p = row as Partner;
+      setPartnerDefaultCurrency(p.defaultCurrency ?? "");
+      setPartnerContactName(p.contactName ?? "");
+      setPartnerContactEmail(p.contactEmail ?? "");
+      setPartnerContactPhone(p.contactPhone ?? "");
+      setPartnerRemarks(p.remarks ?? "");
+    } else {
+      const s = row as Service;
+      setServiceDescription(s.description ?? "");
+    }
+  }, [activeList, selectedId, tab, opcos, partners, services]);
 
   useEffect(() => {
     if (!linkPartnerId && partners.length > 0) setLinkPartnerId(partners[0]!.id);
@@ -136,6 +206,30 @@ export default function AdminMastersPage() {
           code: editCode,
           name: editName,
           status: editStatus,
+          ...(tab === "opcos"
+            ? {
+                country: opcoCountry || null,
+                currency: opcoCurrency || null,
+                primaryContactName: opcoContactName || null,
+                primaryContactEmail: opcoContactEmail || null,
+                primaryContactPhone: opcoContactPhone || null,
+                remarks: opcoRemarks || null,
+              }
+            : {}),
+          ...(tab === "partners"
+            ? {
+                defaultCurrency: partnerDefaultCurrency || null,
+                contactName: partnerContactName || null,
+                contactEmail: partnerContactEmail || null,
+                contactPhone: partnerContactPhone || null,
+                remarks: partnerRemarks || null,
+              }
+            : {}),
+          ...(tab === "services"
+            ? {
+                description: serviceDescription || null,
+              }
+            : {}),
         }),
       });
       const json = (await res.json()) as { ok: boolean; message?: string };
@@ -150,7 +244,7 @@ export default function AdminMastersPage() {
 
   async function toggleActive() {
     if (!selectedId) return;
-    const next = editStatus.toLowerCase() === "active" ? "Inactive" : "Active";
+    const next = editStatus === "Active" ? "Inactive" : "Active";
     setEditStatus(next);
     await saveEdits();
   }
@@ -414,15 +508,129 @@ export default function AdminMastersPage() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-sm font-medium">Status</label>
-                    <input
+                    <select
                       className="h-10 w-full rounded-md border px-3 text-sm"
                       value={editStatus}
-                      onChange={(e) => setEditStatus(e.target.value)}
-                    />
+                      onChange={(e) =>
+                        setEditStatus(e.target.value as "Active" | "Inactive")
+                      }
+                    >
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
+                    </select>
                     <p className="text-xs text-zinc-600">
-                      Use “Active” / “Inactive” for deactivate flow.
+                      Use Active/Inactive to deactivate without deleting.
                     </p>
                   </div>
+
+                  {tab === "opcos" ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Country</label>
+                        <input
+                          className="h-10 w-full rounded-md border px-3 text-sm"
+                          value={opcoCountry}
+                          onChange={(e) => setOpCoCountry(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Currency</label>
+                        <input
+                          className="h-10 w-full rounded-md border px-3 text-sm"
+                          value={opcoCurrency}
+                          onChange={(e) => setOpCoCurrency(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Primary contact name</label>
+                        <input
+                          className="h-10 w-full rounded-md border px-3 text-sm"
+                          value={opcoContactName}
+                          onChange={(e) => setOpCoContactName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Primary contact email</label>
+                        <input
+                          className="h-10 w-full rounded-md border px-3 text-sm"
+                          value={opcoContactEmail}
+                          onChange={(e) => setOpCoContactEmail(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Primary contact phone</label>
+                        <input
+                          className="h-10 w-full rounded-md border px-3 text-sm"
+                          value={opcoContactPhone}
+                          onChange={(e) => setOpCoContactPhone(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Remarks</label>
+                        <input
+                          className="h-10 w-full rounded-md border px-3 text-sm"
+                          value={opcoRemarks}
+                          onChange={(e) => setOpCoRemarks(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {tab === "partners" ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Default currency</label>
+                        <input
+                          className="h-10 w-full rounded-md border px-3 text-sm"
+                          value={partnerDefaultCurrency}
+                          onChange={(e) => setPartnerDefaultCurrency(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Contact name</label>
+                        <input
+                          className="h-10 w-full rounded-md border px-3 text-sm"
+                          value={partnerContactName}
+                          onChange={(e) => setPartnerContactName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Contact email</label>
+                        <input
+                          className="h-10 w-full rounded-md border px-3 text-sm"
+                          value={partnerContactEmail}
+                          onChange={(e) => setPartnerContactEmail(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Contact phone</label>
+                        <input
+                          className="h-10 w-full rounded-md border px-3 text-sm"
+                          value={partnerContactPhone}
+                          onChange={(e) => setPartnerContactPhone(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1 sm:col-span-2">
+                        <label className="text-sm font-medium">Remarks</label>
+                        <input
+                          className="h-10 w-full rounded-md border px-3 text-sm"
+                          value={partnerRemarks}
+                          onChange={(e) => setPartnerRemarks(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {tab === "services" ? (
+                    <div className="space-y-1">
+                      <label className="text-sm font-medium">Description</label>
+                      <input
+                        className="h-10 w-full rounded-md border px-3 text-sm"
+                        value={serviceDescription}
+                        onChange={(e) => setServiceDescription(e.target.value)}
+                      />
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"

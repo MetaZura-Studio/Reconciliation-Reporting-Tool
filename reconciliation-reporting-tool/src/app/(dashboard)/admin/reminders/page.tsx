@@ -12,7 +12,9 @@ type ReminderRow = {
     | "PARTNER_MONTHLY"
     | "CLIENT_CONSOLIDATED"
     | "FINAL_RS_CONFIRMATION";
-  daysBeforeDue: number;
+  triggerEvent: "REPORT_SUBMISSION_DUE";
+  triggerTiming: "BEFORE_DUE" | "AFTER_DUE" | "INSTANT";
+  daysOffset: number;
   repeatEveryDays: number | null;
   isActive: boolean;
   template: Template | null;
@@ -28,7 +30,12 @@ export default function AdminRemindersPage() {
   const [targetRole, setTargetRole] = useState<ReminderRow["targetRole"]>("OPCO");
   const [reportType, setReportType] =
     useState<ReminderRow["reportType"]>("OPCO_MONTHLY");
-  const [daysBeforeDue, setDaysBeforeDue] = useState<number>(3);
+  const [triggerEvent] = useState<ReminderRow["triggerEvent"]>(
+    "REPORT_SUBMISSION_DUE",
+  );
+  const [triggerTiming, setTriggerTiming] =
+    useState<ReminderRow["triggerTiming"]>("BEFORE_DUE");
+  const [daysOffset, setDaysOffset] = useState<number>(3);
   const [repeatEveryDays, setRepeatEveryDays] = useState<string>("");
   const [templateId, setTemplateId] = useState<string>("");
 
@@ -66,7 +73,9 @@ export default function AdminRemindersPage() {
           name,
           targetRole,
           reportType,
-          daysBeforeDue,
+          triggerEvent,
+          triggerTiming,
+          daysOffset,
           repeatEveryDays: repeatEveryDays ? Number(repeatEveryDays) : null,
           templateId: templateId || null,
         }),
@@ -156,12 +165,26 @@ export default function AdminRemindersPage() {
 
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1">
-                <label className="text-sm font-medium">Days before due</label>
+                <label className="text-sm font-medium">Trigger timing</label>
+                <select
+                  className="h-10 w-full rounded-md border px-3 text-sm"
+                  value={triggerTiming}
+                  onChange={(e) =>
+                    setTriggerTiming(e.target.value as ReminderRow["triggerTiming"])
+                  }
+                >
+                  <option value="BEFORE_DUE">BEFORE_DUE</option>
+                  <option value="AFTER_DUE">AFTER_DUE</option>
+                  <option value="INSTANT">INSTANT</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Days offset</label>
                 <input
                   className="h-10 w-full rounded-md border px-3 text-sm"
                   inputMode="numeric"
-                  value={daysBeforeDue}
-                  onChange={(e) => setDaysBeforeDue(Number(e.target.value))}
+                  value={daysOffset}
+                  onChange={(e) => setDaysOffset(Number(e.target.value))}
                 />
               </div>
               <div className="space-y-1">
@@ -219,6 +242,7 @@ export default function AdminRemindersPage() {
                   <th className="px-3 py-2">Name</th>
                   <th className="px-3 py-2">Role</th>
                   <th className="px-3 py-2">Type</th>
+                  <th className="px-3 py-2">Timing</th>
                   <th className="px-3 py-2">Offset</th>
                   <th className="px-3 py-2">Repeat</th>
                   <th className="px-3 py-2">Template</th>
@@ -231,7 +255,8 @@ export default function AdminRemindersPage() {
                     <td className="px-3 py-2">{r.name}</td>
                     <td className="px-3 py-2">{r.targetRole}</td>
                     <td className="px-3 py-2">{r.reportType}</td>
-                    <td className="px-3 py-2">{r.daysBeforeDue}d</td>
+                    <td className="px-3 py-2">{r.triggerTiming}</td>
+                    <td className="px-3 py-2">{r.daysOffset}d</td>
                     <td className="px-3 py-2">
                       {r.repeatEveryDays ? `${r.repeatEveryDays}d` : "-"}
                     </td>
@@ -247,7 +272,7 @@ export default function AdminRemindersPage() {
                 ))}
                 {reminders.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-6 text-sm text-zinc-600" colSpan={7}>
+                    <td className="px-3 py-6 text-sm text-zinc-600" colSpan={8}>
                       No reminders yet.
                     </td>
                   </tr>

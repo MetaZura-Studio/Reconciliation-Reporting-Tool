@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/app/api/_utils/requireUser";
 import { UPLOADS_DIR } from "@/lib/uploads";
+import { writeAudit } from "@/modules/audit/logger";
 
 function canAccessReport(params: {
   role: "ADMIN" | "CLIENT" | "OPCO" | "PARTNER";
@@ -105,6 +106,15 @@ export async function GET(
       { status: 404 },
     );
   }
+
+  await writeAudit({
+    actorId: auth.user.id,
+    action: "REPORT_DOWNLOAD",
+    entityType: "Report",
+    entityId: report.id,
+    message: "Report downloaded",
+    meta: { reportId: report.id, type: report.type },
+  });
 
   const nodeStream = fs.createReadStream(resolvedFile);
   const webStream = Readable.toWeb(nodeStream) as ReadableStream;

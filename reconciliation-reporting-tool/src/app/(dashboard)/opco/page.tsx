@@ -19,7 +19,18 @@ export default function OpCoDashboardPage() {
   const [opcos, setOpCos] = useState<OpCo[]>([]);
   const [activeOpcoId, setActiveOpcoId] = useState<string>("");
   const [reports, setReports] = useState<ReportRow[]>([]);
+  const [prevPeriodStatus, setPrevPeriodStatus] = useState<string>("—");
+  const [notifications, setNotifications] = useState<
+    { id: string; createdAt: string; subject: string | null; status: string }[]
+  >([]);
   const [error, setError] = useState<string | null>(null);
+
+  function getPreviousPeriod() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth() + 1;
+    return m === 1 ? { month: 12, year: y - 1 } : { month: m - 1, year: y };
+  }
 
   useEffect(() => {
     void (async () => {
@@ -39,10 +50,7 @@ export default function OpCoDashboardPage() {
     if (!activeOpcoId) return;
     void (async () => {
       setError(null);
-      const params = new URLSearchParams({
-        type: "OPCO_MONTHLY",
-        opcoId: activeOpcoId,
-      });
+      const params = new URLSearchParams({ type: "OPCO_MONTHLY", opcoId: activeOpcoId });
       const res = await fetch(`/api/reports?${params.toString()}`, {
         cache: "no-store",
       });
@@ -52,6 +60,26 @@ export default function OpCoDashboardPage() {
         return;
       }
       setReports((json.reports ?? []).slice(0, 5));
+
+      const prev = getPreviousPeriod();
+      const prevParams = new URLSearchParams({
+        type: "OPCO_MONTHLY",
+        opcoId: activeOpcoId,
+        month: String(prev.month),
+        year: String(prev.year),
+      });
+      const prevRes = await fetch(`/api/reports?${prevParams.toString()}`, {
+        cache: "no-store",
+      });
+      const prevJson = await prevRes.json();
+      if (prevRes.ok && prevJson?.ok) {
+        const has = (prevJson.reports ?? []).length > 0;
+        setPrevPeriodStatus(has ? "Submitted" : "Not submitted");
+      }
+
+      const nRes = await fetch("/api/notifications/me", { cache: "no-store" });
+      const nJson = await nRes.json();
+      if (nRes.ok && nJson?.ok) setNotifications((nJson.items ?? []).slice(0, 5));
     })();
   }, [activeOpcoId]);
 
@@ -75,14 +103,49 @@ export default function OpCoDashboardPage() {
           </div>
         </Link>
         <div className="rounded-xl border bg-white p-5">
-          <div className="text-sm font-semibold text-zinc-900">Assignments</div>
+          <div className="text-sm font-semibold text-zinc-900">Submission status</div>
           <div className="mt-1 text-sm text-zinc-600">
-            {opcos.length} OpCo(s) assigned
+            Previous period: <span className="font-medium">{prevPeriodStatus}</span>
           </div>
         </div>
         <div className="rounded-xl border bg-white p-5">
           <div className="text-sm font-semibold text-zinc-900">Invoices</div>
           <div className="mt-1 text-sm text-zinc-600">Coming next.</div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border bg-white p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold text-zinc-900">Recent notifications</div>
+            <div className="text-sm text-zinc-600">Latest reminders and updates.</div>
+          </div>
+          <button
+            type="button"
+            className="rounded-md border px-3 py-1.5 text-sm hover:bg-zinc-50"
+            onClick={() =>
+              void fetch("/api/notifications/me", { cache: "no-store" })
+                .then((r) => r.json())
+                .then((j) => {
+                  if (j?.ok) setNotifications((j.items ?? []).slice(0, 5));
+                })
+            }
+          >
+            Refresh
+          </button>
+        </div>
+        <div className="mt-3 space-y-2">
+          {notifications.map((n) => (
+            <div key={n.id} className="rounded-md border px-3 py-2 text-sm">
+              <div className="text-zinc-900">{n.subject ?? n.status}</div>
+              <div className="text-xs text-zinc-600">
+                {new Date(n.createdAt).toLocaleString()} • {n.status}
+              </div>
+            </div>
+          ))}
+          {notifications.length === 0 ? (
+            <div className="text-sm text-zinc-600">No notifications yet.</div>
+          ) : null}
         </div>
       </div>
 

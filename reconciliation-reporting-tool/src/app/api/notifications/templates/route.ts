@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/app/api/_utils/authz";
+import { writeAudit } from "@/modules/audit/logger";
 
 const CreateSchema = z.object({
   name: z.string().min(1).max(120),
@@ -42,6 +43,14 @@ export async function POST(req: Request) {
         body: parsed.data.body,
         isActive: parsed.data.isActive ?? true,
       },
+    });
+    await writeAudit({
+      actorId: auth.user.id,
+      action: "NOTIFICATION_TEMPLATE_CREATE",
+      entityType: "NotificationTemplate",
+      entityId: created.id,
+      message: "Notification template created",
+      meta: { name: created.name, channel: created.channel, isActive: created.isActive },
     });
     return NextResponse.json({ ok: true, template: created });
   } catch {

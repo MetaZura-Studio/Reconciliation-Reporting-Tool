@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/app/api/_utils/authz";
+import { writeAudit } from "@/modules/audit/logger";
 
 const BodySchema = z.object({
   opcoIds: z.array(z.string().min(1)).default([]),
@@ -52,6 +53,15 @@ export async function PUT(
         ]
       : []),
   ]);
+
+  await writeAudit({
+    actorId: auth.user.id,
+    action: "USER_ASSIGN_OPCO",
+    entityType: "User",
+    entityId: userId,
+    message: "Updated user OpCo assignments",
+    meta: { opcoIds },
+  });
 
   return NextResponse.json({ ok: true });
 }

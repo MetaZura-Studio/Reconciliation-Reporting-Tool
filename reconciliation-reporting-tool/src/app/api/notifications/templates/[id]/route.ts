@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/app/api/_utils/authz";
+import { writeAudit } from "@/modules/audit/logger";
 
 const PatchSchema = z.object({
   name: z.string().min(1).max(120).optional(),
@@ -37,6 +38,14 @@ export async function PATCH(
           ? { subject: parsed.data.subject?.trim() || null }
           : {}),
       },
+    });
+    await writeAudit({
+      actorId: auth.user.id,
+      action: "NOTIFICATION_TEMPLATE_UPDATE",
+      entityType: "NotificationTemplate",
+      entityId: template.id,
+      message: "Notification template updated",
+      meta: parsed.data,
     });
     return NextResponse.json({ ok: true, template });
   } catch {

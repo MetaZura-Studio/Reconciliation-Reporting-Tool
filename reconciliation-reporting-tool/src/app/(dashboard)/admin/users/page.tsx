@@ -32,6 +32,11 @@ export default function AdminUsersPage() {
   const [tempPassword, setTempPassword] = useState("Temp@12345");
   const [createdPassword, setCreatedPassword] = useState<string | null>(null);
 
+  const [query, setQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<UserRow["role"] | "ALL">("ALL");
+  const [statusFilter, setStatusFilter] =
+    useState<UserRow["status"] | "ALL">("ALL");
+
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const selectedUser = useMemo(
     () => users.find((u) => u.id === selectedUserId) ?? null,
@@ -41,10 +46,30 @@ export default function AdminUsersPage() {
   const [assignedPartnerIds, setAssignedPartnerIds] = useState<string[]>([]);
   const [savingAssignments, setSavingAssignments] = useState(false);
 
+  const [editFullName, setEditFullName] = useState("");
+  const [editMobile, setEditMobile] = useState<string>("");
+  const [editRole, setEditRole] = useState<UserRow["role"]>("OPCO");
+  const [editStatus, setEditStatus] = useState<UserRow["status"]>("ACTIVE");
+  const [savingUser, setSavingUser] = useState(false);
+
   const sorted = useMemo(
     () => [...users].sort((a, b) => a.email.localeCompare(b.email)),
     [users],
   );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return sorted.filter((u) => {
+      if (roleFilter !== "ALL" && u.role !== roleFilter) return false;
+      if (statusFilter !== "ALL" && u.status !== statusFilter) return false;
+      if (!q) return true;
+      return (
+        u.email.toLowerCase().includes(q) ||
+        u.fullName.toLowerCase().includes(q) ||
+        (u.mobile ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [query, roleFilter, sorted, statusFilter]);
 
   async function load() {
     setLoading(true);
@@ -100,11 +125,19 @@ export default function AdminUsersPage() {
         ]);
         if (o?.ok) setAssignedOpcoIds(o.opcoIds ?? []);
         if (p?.ok) setAssignedPartnerIds(p.partnerIds ?? []);
+
+        const u = users.find((x) => x.id === selectedUserId);
+        if (u) {
+          setEditFullName(u.fullName);
+          setEditMobile(u.mobile ?? "");
+          setEditRole(u.role);
+          setEditStatus(u.status);
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load assignments");
       }
     })();
-  }, [selectedUserId]);
+  }, [selectedUserId, users]);
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault();
@@ -160,6 +193,33 @@ export default function AdminUsersPage() {
     } catch {
       setUsers(prev);
       setError("Network error");
+    }
+  }
+
+  async function saveUserEdits() {
+    if (!selectedUserId) return;
+    setSavingUser(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/users/${selectedUserId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          fullName: editFullName,
+          mobile: editMobile ? editMobile : null,
+          role: editRole,
+          status: editStatus,
+        }),
+      });
+      const json = (await res.json()) as { ok: boolean; message?: string };
+      if (!res.ok || !json.ok) {
+        throw new Error(json.message || "Failed to save user");
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save user");
+    } finally {
+      setSavingUser(false);
     }
   }
 
@@ -301,6 +361,39 @@ export default function AdminUsersPage() {
               Refresh
             </button>
           </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <input
+              className="h-9 rounded-md border px-3 text-sm sm:col-span-1"
+              placeholder="Search name/email/mobile"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <select
+              className="h-9 rounded-md border px-2 text-sm"
+              value={roleFilter}
+              onChange={(e) =>
+                setRoleFilter(e.target.value as UserRow["role"] | "ALL")
+              }
+            >
+              <option value="ALL">All roles</option>
+              <option value="ADMIN">ADMIN</option>
+              <option value="CLIENT">CLIENT</option>
+              <option value="OPCO">OPCO</option>
+              <option value="PARTNER">PARTNER</option>
+            </select>
+            <select
+              className="h-9 rounded-md border px-2 text-sm"
+              value={statusFilter}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as UserRow["status"] | "ALL")
+              }
+            >
+              <option value="ALL">All status</option>
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="INACTIVE">INACTIVE</option>
+              <option value="LOCKED">LOCKED</option>
+            </select>
+          </div>
           {error ? (
             <p className="mt-3 text-sm text-red-600">{error}</p>
           ) : null}
@@ -319,7 +412,7 @@ export default function AdminUsersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((u) => (
+                  {filtered.map((u) => (
                     <tr key={u.id} className="border-t">
                       <td className="px-3 py-2">{u.fullName}</td>
                       <td className="px-3 py-2 font-mono text-xs">{u.email}</td>
@@ -352,14 +445,24 @@ export default function AdminUsersPage() {
         <div className="rounded-xl border bg-white p-5">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-zinc-900">Assignments</h2>
-            <button
-              type="button"
-              className="h-9 rounded-md bg-black px-3 text-sm font-medium text-white disabled:opacity-60"
-              onClick={() => void saveAssignments()}
-              disabled={!selectedUserId || savingAssignments}
-            >
-              {savingAssignments ? "Saving..." : "Save"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="h-9 rounded-md border px-3 text-sm font-medium hover:bg-zinc-50 disabled:opacity-60"
+                onClick={() => void saveUserEdits()}
+                disabled={!selectedUserId || savingUser}
+              >
+                {savingUser ? "Saving..." : "Save user"}
+              </button>
+              <button
+                type="button"
+                className="h-9 rounded-md bg-black px-3 text-sm font-medium text-white disabled:opacity-60"
+                onClick={() => void saveAssignments()}
+                disabled={!selectedUserId || savingAssignments}
+              >
+                {savingAssignments ? "Saving..." : "Save assignments"}
+              </button>
+            </div>
           </div>
 
           {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
@@ -386,12 +489,70 @@ export default function AdminUsersPage() {
               ) : null}
             </div>
 
+            <div className="space-y-2 rounded-md border bg-zinc-50 p-3">
+              <div className="text-sm font-medium">Edit user</div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-zinc-700">
+                    Full name
+                  </label>
+                  <input
+                    className="h-9 w-full rounded-md border px-2 text-sm"
+                    value={editFullName}
+                    onChange={(e) => setEditFullName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-zinc-700">
+                    Mobile
+                  </label>
+                  <input
+                    className="h-9 w-full rounded-md border px-2 text-sm"
+                    value={editMobile}
+                    onChange={(e) => setEditMobile(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-zinc-700">Role</label>
+                  <select
+                    className="h-9 w-full rounded-md border px-2 text-sm"
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value as UserRow["role"])}
+                  >
+                    <option value="ADMIN">ADMIN</option>
+                    <option value="CLIENT">CLIENT</option>
+                    <option value="OPCO">OPCO</option>
+                    <option value="PARTNER">PARTNER</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-zinc-700">
+                    Status
+                  </label>
+                  <select
+                    className="h-9 w-full rounded-md border px-2 text-sm"
+                    value={editStatus}
+                    onChange={(e) =>
+                      setEditStatus(e.target.value as UserRow["status"])
+                    }
+                  >
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="INACTIVE">INACTIVE</option>
+                    <option value="LOCKED">LOCKED</option>
+                  </select>
+                </div>
+              </div>
+              <div className="text-xs text-zinc-600">
+                Tip: if you change role, make sure assignments match the new role.
+              </div>
+            </div>
+
             <div className="space-y-2">
               <div className="text-sm font-medium">OpCo assignments</div>
               <div className="max-h-52 space-y-1 overflow-auto rounded-md border p-2">
                 {opcos.map((o) => {
                   const checked = assignedOpcoIds.includes(o.id);
-                  const disabled = selectedUser?.role !== "OPCO";
+                  const disabled = editRole !== "OPCO";
                   return (
                     <label
                       key={o.id}
@@ -433,7 +594,7 @@ export default function AdminUsersPage() {
               <div className="max-h-52 space-y-1 overflow-auto rounded-md border p-2">
                 {partners.map((p) => {
                   const checked = assignedPartnerIds.includes(p.id);
-                  const disabled = selectedUser?.role !== "PARTNER";
+                  const disabled = editRole !== "PARTNER";
                   return (
                     <label
                       key={p.id}

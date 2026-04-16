@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Service = { id: string; code: string; name: string };
 type OpCo = { id: string; code: string; name: string };
@@ -46,7 +46,41 @@ export default function AdminReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function loadMasters() {
+  const [fType, setFType] = useState<ReportType | "">("");
+  const [fMonth, setFMonth] = useState<string>("");
+  const [fYear, setFYear] = useState<string>("");
+  const [fStatus, setFStatus] = useState<string>("");
+  const [fServiceId, setFServiceId] = useState<string>("");
+  const [fOpCoId, setFOpCoId] = useState<string>("");
+  const [fPartnerId, setFPartnerId] = useState<string>("");
+  const [fQ, setFQ] = useState<string>("");
+  const [fSubmittedBy, setFSubmittedBy] = useState<string>("");
+
+  const filterParams = useMemo(() => {
+    const p = new URLSearchParams();
+    if (fType) p.set("type", fType);
+    if (fMonth) p.set("month", fMonth);
+    if (fYear) p.set("year", fYear);
+    if (fStatus) p.set("status", fStatus);
+    if (fServiceId) p.set("serviceId", fServiceId);
+    if (fOpCoId) p.set("opcoId", fOpCoId);
+    if (fPartnerId) p.set("partnerId", fPartnerId);
+    if (fQ) p.set("q", fQ);
+    if (fSubmittedBy) p.set("submittedBy", fSubmittedBy);
+    return p.toString();
+  }, [
+    fMonth,
+    fOpCoId,
+    fPartnerId,
+    fQ,
+    fServiceId,
+    fStatus,
+    fSubmittedBy,
+    fType,
+    fYear,
+  ]);
+
+  const loadMasters = useCallback(async () => {
     const [s, o, p] = await Promise.all([
       fetch("/api/masters/services").then((r) => r.json()),
       fetch("/api/masters/opcos").then((r) => r.json()),
@@ -55,10 +89,10 @@ export default function AdminReportsPage() {
     if (s?.ok) setServices(s.services);
     if (o?.ok) setOpCos(o.opcos);
     if (p?.ok) setPartners(p.partners);
-  }
+  }, []);
 
-  async function loadReports() {
-    const res = await fetch("/api/reports");
+  const loadReports = useCallback(async () => {
+    const res = await fetch(`/api/reports${filterParams ? `?${filterParams}` : ""}`);
     const json = (await res.json()) as
       | { ok: true; reports: ReportRow[] }
       | { ok: false; message?: string };
@@ -68,7 +102,7 @@ export default function AdminReportsPage() {
       throw new Error(message);
     }
     setReports(json.reports);
-  }
+  }, [filterParams]);
 
   useEffect(() => {
     void (async () => {
@@ -80,7 +114,7 @@ export default function AdminReportsPage() {
         setError(e instanceof Error ? e.message : "Failed to load");
       }
     })();
-  }, []);
+  }, [loadMasters, loadReports]);
 
   useEffect(() => {
     if (!serviceId && services.length > 0) setServiceId(services[0]!.id);
@@ -268,6 +302,137 @@ export default function AdminReportsPage() {
               Refresh
             </button>
           </div>
+          <div className="mt-4 grid gap-2 rounded-lg border bg-zinc-50 p-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-zinc-700">Type</label>
+              <select
+                className="h-9 w-full rounded-md border px-2 text-sm"
+                value={fType}
+                onChange={(e) => setFType(e.target.value as ReportType | "")}
+              >
+                <option value="">(any)</option>
+                <option value="OPCO_MONTHLY">OPCO_MONTHLY</option>
+                <option value="PARTNER_MONTHLY">PARTNER_MONTHLY</option>
+                <option value="CLIENT_CONSOLIDATED">CLIENT_CONSOLIDATED</option>
+                <option value="FINAL_RS_CONFIRMATION">FINAL_RS_CONFIRMATION</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-zinc-700">Status</label>
+              <select
+                className="h-9 w-full rounded-md border px-2 text-sm"
+                value={fStatus}
+                onChange={(e) => setFStatus(e.target.value)}
+              >
+                <option value="">(any)</option>
+                <option value="DRAFT">DRAFT</option>
+                <option value="SUBMITTED">SUBMITTED</option>
+                <option value="UNDER_REVIEW">UNDER_REVIEW</option>
+                <option value="ACCEPTED">ACCEPTED</option>
+                <option value="REJECTED">REJECTED</option>
+                <option value="SUPERSEDED">SUPERSEDED</option>
+                <option value="ARCHIVED">ARCHIVED</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-zinc-700">Month</label>
+              <input
+                className="h-9 w-full rounded-md border px-2 text-sm"
+                inputMode="numeric"
+                placeholder="1-12"
+                value={fMonth}
+                onChange={(e) => setFMonth(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-zinc-700">Year</label>
+              <input
+                className="h-9 w-full rounded-md border px-2 text-sm"
+                inputMode="numeric"
+                placeholder="2026"
+                value={fYear}
+                onChange={(e) => setFYear(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-zinc-700">Service</label>
+              <select
+                className="h-9 w-full rounded-md border px-2 text-sm"
+                value={fServiceId}
+                onChange={(e) => setFServiceId(e.target.value)}
+              >
+                <option value="">(any)</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.code}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-zinc-700">OpCo</label>
+              <select
+                className="h-9 w-full rounded-md border px-2 text-sm"
+                value={fOpCoId}
+                onChange={(e) => setFOpCoId(e.target.value)}
+              >
+                <option value="">(any)</option>
+                {opcos.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.code}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-zinc-700">Partner</label>
+              <select
+                className="h-9 w-full rounded-md border px-2 text-sm"
+                value={fPartnerId}
+                onChange={(e) => setFPartnerId(e.target.value)}
+              >
+                <option value="">(any)</option>
+                {partners.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-zinc-700">
+                File / Reference
+              </label>
+              <input
+                className="h-9 w-full rounded-md border px-2 text-sm"
+                placeholder="search..."
+                value={fQ}
+                onChange={(e) => setFQ(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <label className="text-xs font-medium text-zinc-700">
+                Submitted by (name/email)
+              </label>
+              <input
+                className="h-9 w-full rounded-md border px-2 text-sm"
+                placeholder="search..."
+                value={fSubmittedBy}
+                onChange={(e) => setFSubmittedBy(e.target.value)}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <button
+                type="button"
+                className="h-9 rounded-md bg-black px-3 text-sm font-medium text-white"
+                onClick={() =>
+                  void loadReports().catch(() => setError("Failed to apply filters"))
+                }
+              >
+                Apply filters
+              </button>
+            </div>
+          </div>
           <div className="mt-4 overflow-auto rounded-lg border">
             <table className="min-w-full text-left text-sm">
               <thead className="bg-zinc-50 text-xs text-zinc-600">
@@ -279,6 +444,7 @@ export default function AdminReportsPage() {
                   <th className="px-3 py-2">Partner</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">By</th>
+                  <th className="px-3 py-2"></th>
                 </tr>
               </thead>
               <tbody>
@@ -302,11 +468,19 @@ export default function AdminReportsPage() {
                         {r.submittedBy.email}
                       </div>
                     </td>
+                    <td className="px-3 py-2 text-right">
+                      <a
+                        className="rounded-md border px-3 py-1.5 text-sm hover:bg-zinc-50"
+                        href={`/api/reports/${r.id}/download`}
+                      >
+                        Download
+                      </a>
+                    </td>
                   </tr>
                 ))}
                 {reports.length === 0 ? (
                   <tr>
-                    <td className="px-3 py-6 text-sm text-zinc-600" colSpan={7}>
+                    <td className="px-3 py-6 text-sm text-zinc-600" colSpan={8}>
                       No reports yet.
                     </td>
                   </tr>

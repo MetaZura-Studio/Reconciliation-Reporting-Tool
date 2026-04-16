@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/app/api/_utils/authz";
+import { writeAudit } from "@/modules/audit/logger";
 
 const CreateSchema = z.object({
   name: z.string().min(1).max(120),
@@ -12,10 +13,12 @@ const CreateSchema = z.object({
     "CLIENT_CONSOLIDATED",
     "FINAL_RS_CONFIRMATION",
   ]),
-  daysBeforeDue: z.coerce.number().int().min(0).max(60).default(3),
+  triggerEvent: z.enum(["REPORT_SUBMISSION_DUE"]).default("REPORT_SUBMISSION_DUE"),
+  triggerTiming: z.enum(["BEFORE_DUE", "AFTER_DUE", "INSTANT"]).default("BEFORE_DUE"),
+  daysOffset: z.coerce.number().int().min(0).max(60).default(3),
   repeatEveryDays: z.coerce.number().int().min(1).max(60).optional().nullable(),
   isActive: z.boolean().optional(),
-  templateId: z.string().optional().nullable(),
+  templateId: z.string().min(1).optional().nullable(),
 });
 
 export async function GET() {
@@ -47,12 +50,23 @@ export async function POST(req: Request) {
         name: parsed.data.name.trim(),
         targetRole: parsed.data.targetRole,
         reportType: parsed.data.reportType,
-        daysBeforeDue: parsed.data.daysBeforeDue,
+        triggerEvent: parsed.data.triggerEvent,
+        triggerTiming: parsed.data.triggerTiming,
+        daysOffset: parsed.data.daysOffset,
+        daysBeforeDue: parsed.data.daysOffset,
         repeatEveryDays: parsed.data.repeatEveryDays ?? null,
         isActive: parsed.data.isActive ?? true,
         templateId: parsed.data.templateId ?? null,
       },
       include: { template: { select: { id: true, name: true } } },
+    });
+    await writeAudit({
+      actorId: auth.user.id,
+      action: "REMINDER_CREATE",
+      entityType: "ReminderSetting",
+      entityId: reminder.id,
+      message: "Reminder created",
+      meta: parsed.data,
     });
     return NextResponse.json({ ok: true, reminder });
   } catch {
