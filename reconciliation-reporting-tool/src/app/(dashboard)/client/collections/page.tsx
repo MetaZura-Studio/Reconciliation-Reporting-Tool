@@ -26,6 +26,27 @@ export default function ClientCollectionsPage() {
   const [currency, setCurrency] = useState("USD");
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
+  const [summary, setSummary] = useState<
+    | {
+        collected: number;
+        invoiced: number;
+        outstanding: number;
+        collectionsCount: number;
+        invoicesCount: number;
+      }
+    | null
+  >(null);
+
+  async function refreshSummary() {
+    setSummary(null);
+    if (!opcoId) return;
+    const res = await fetch(
+      `/api/collections/summary?opcoId=${encodeURIComponent(opcoId)}&month=${month}&year=${year}`,
+      { cache: "no-store" },
+    );
+    const data = await res.json();
+    if (res.ok && data?.ok) setSummary(data.totals ?? null);
+  }
 
   async function refresh() {
     setError(null);
@@ -65,6 +86,7 @@ export default function ClientCollectionsPage() {
         return;
       }
       await refresh();
+      await refreshSummary();
     } finally {
       setBusy(false);
     }
@@ -162,12 +184,39 @@ export default function ClientCollectionsPage() {
           <button
             className="rounded border px-4 py-2 text-sm font-medium disabled:opacity-60"
             disabled={busy}
-            onClick={() => void refresh()}
+            onClick={() => {
+              void refresh();
+              void refreshSummary();
+            }}
           >
             Refresh
           </button>
           {error ? <div className="text-sm text-red-600">{error}</div> : null}
         </div>
+
+        {summary ? (
+          <div className="mt-4 rounded border bg-zinc-50 p-3 text-sm">
+            <div className="font-medium">Period summary</div>
+            <div className="mt-1 grid grid-cols-1 gap-2 md:grid-cols-3">
+              <div>
+                <div className="text-zinc-600">Collected</div>
+                <div className="font-medium">{summary.collected}</div>
+              </div>
+              <div>
+                <div className="text-zinc-600">Invoiced</div>
+                <div className="font-medium">{summary.invoiced}</div>
+              </div>
+              <div>
+                <div className="text-zinc-600">Outstanding</div>
+                <div className="font-medium">{summary.outstanding}</div>
+              </div>
+            </div>
+            <div className="mt-2 text-zinc-600">
+              Invoices: {summary.invoicesCount} · Collections:{" "}
+              {summary.collectionsCount}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="rounded-lg border bg-white">

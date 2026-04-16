@@ -6,7 +6,33 @@ export async function GET() {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
 
+  const where =
+    auth.user.role === "OPCO"
+      ? {
+          opcoId: {
+            in: (
+              await prisma.userOpCo.findMany({
+                where: { userId: auth.user.id },
+                select: { opcoId: true },
+              })
+            ).map((x) => x.opcoId),
+          },
+        }
+      : auth.user.role === "PARTNER"
+        ? {
+            partnerId: {
+              in: (
+                await prisma.userPartner.findMany({
+                  where: { userId: auth.user.id },
+                  select: { partnerId: true },
+                })
+              ).map((x) => x.partnerId),
+            },
+          }
+        : {};
+
   const reconciliations = await prisma.reconciliation.findMany({
+    where,
     orderBy: { createdAt: "desc" },
     take: 50,
     select: {

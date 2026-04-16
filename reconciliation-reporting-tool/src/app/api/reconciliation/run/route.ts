@@ -3,6 +3,10 @@ import { requireUser } from "@/app/api/_utils/requireUser";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/modules/audit/logger";
+import {
+  runMatchingEngine,
+  type ReconciliationEntry,
+} from "@/modules/reconciliation/engine";
 
 const RunSchema = z.object({
   month: z.coerce.number().int().min(1).max(12),
@@ -11,6 +15,25 @@ const RunSchema = z.object({
   opcoId: z.string().optional().nullable(),
   partnerId: z.string().optional().nullable(),
   remarks: z.string().optional().nullable(),
+  amountTolerance: z.coerce.number().nonnegative().optional(),
+  opcoEntries: z
+    .array(
+      z.object({
+        reference: z.string().min(1),
+        amount: z.coerce.number(),
+        meta: z.unknown().optional(),
+      }),
+    )
+    .optional(),
+  partnerEntries: z
+    .array(
+      z.object({
+        reference: z.string().min(1),
+        amount: z.coerce.number(),
+        meta: z.unknown().optional(),
+      }),
+    )
+    .optional(),
 });
 
 export async function POST(req: Request) {
@@ -23,6 +46,44 @@ export async function POST(req: Request) {
       { ok: false, message: "Invalid request", issues: parsed.error.issues },
       { status: 400 },
     );
+  }
+
+  if (auth.user.role === "OPCO") {
+    if (!parsed.data.opcoId) {
+      return NextResponse.json(
+        { ok: false, message: "opcoId is required for OpCo users" },
+        { status: 400 },
+      );
+    }
+    const allowed = await prisma.userOpCo.findFirst({
+      where: { userId: auth.user.id, opcoId: parsed.data.opcoId },
+      select: { opcoId: true },
+    });
+    if (!allowed) {
+      return NextResponse.json(
+        { ok: false, message: "Forbidden: OpCo not assigned" },
+        { status: 403 },
+      );
+    }
+  }
+
+  if (auth.user.role === "PARTNER") {
+    if (!parsed.data.partnerId) {
+      return NextResponse.json(
+        { ok: false, message: "partnerId is required for Partner users" },
+        { status: 400 },
+      );
+    }
+    const allowed = await prisma.userPartner.findFirst({
+      where: { userId: auth.user.id, partnerId: parsed.data.partnerId },
+      select: { partnerId: true },
+    });
+    if (!allowed) {
+      return NextResponse.json(
+        { ok: false, message: "Forbidden: Partner not assigned" },
+        { status: 403 },
+      );
+    }
   }
 
   const r = await prisma.reconciliation.create({
@@ -39,28 +100,34 @@ export async function POST(req: Request) {
     select: { id: true },
   });
 
-  // Placeholder engine: creates a few items; replace with real rules/parser later.
+  const opcoEntries: ReconciliationEntry[] =
+    parsed.data.opcoEntries ?? [
+      { reference: "TXN-001", amount: 100, meta: { source: "stub" } },
+      { reference: "TXN-002", amount: 50, meta: { source: "stub" } },
+      { reference: "TXN-003", amount: 25, meta: { source: "stub" } },
+    ];
+  const partnerEntries: ReconciliationEntry[] =
+    parsed.data.partnerEntries ?? [
+      { reference: "TXN-001", amount: 100, meta: { source: "stub" } },
+      { reference: "TXN-002", amount: 45, meta: { source: "stub" } },
+    ];
+
+  const matches = runMatchingEngine(opcoEntries, partnerEntries, {
+    amountTolerance: parsed.data.amountTolerance,
+  });
+
   await prisma.reconciliationItem.createMany({
-    data: [
-      {
-        reconciliationId: r.id,
-        status: "MATCHED",
-        reference: "TXN-001",
-        opcoAmount: "100.00",
-        partnerAmount: "100.00",
-        difference: "0.00",
-        meta: { source: "stub" },
-      },
-      {
-        reconciliationId: r.id,
-        status: "MISMATCH",
-        reference: "TXN-002",
-        opcoAmount: "50.00",
-        partnerAmount: "45.00",
-        difference: "5.00",
-        meta: { source: "stub" },
-      },
-    ],
+    data: matches.map((m) => ({
+      reconciliationId: r.id,
+      status: m.status,
+      reference: m.reference,
+      opcoAmount:
+        m.opcoAmount === null ? null : Number(m.opcoAmount).toFixed(2),
+      partnerAmount:
+        m.partnerAmount === null ? null : Number(m.partnerAmount).toFixed(2),
+      difference: Number(m.difference).toFixed(2),
+      meta: m.meta ?? undefined,
+    })),
   });
 
   await prisma.reconciliation.update({
@@ -75,7 +142,11 @@ export async function POST(req: Request) {
     entityType: "Reconciliation",
     entityId: r.id,
     message: "Reconciliation executed",
-    meta: parsed.data,
+    meta: {
+      ...parsed.data,
+      opcoEntriesCount: opcoEntries.length,
+      partnerEntriesCount: partnerEntries.length,
+    },
   });
 
   return NextResponse.json({ ok: true, reconciliationId: r.id });
