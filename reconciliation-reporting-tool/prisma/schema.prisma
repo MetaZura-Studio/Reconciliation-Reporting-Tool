@@ -309,6 +309,8 @@ model PartnerInvoiceUpload {
   service      Service  @relation(fields: [serviceId], references: [id])
   submittedBy  User     @relation(fields: [submittedById], references: [id], onDelete: Cascade)
 
+  invoices     Invoice[]
+
   @@index([year, month, partnerId, serviceId])
   @@index([invoiceNumber])
   @@unique([partnerId, invoiceNumber, year, month, serviceId])
@@ -406,6 +408,7 @@ model Invoice {
   opcoId           String
   partnerId        String
   reconciliationId String?
+  partnerInvoiceUploadId String?
 
   invoiceNumber    String?
   currency         String?
@@ -421,6 +424,7 @@ model Invoice {
   opco             OpCo          @relation(fields: [opcoId], references: [id])
   partner          Partner       @relation(fields: [partnerId], references: [id])
   reconciliation   Reconciliation? @relation(fields: [reconciliationId], references: [id])
+  partnerInvoiceUpload PartnerInvoiceUpload? @relation(fields: [partnerInvoiceUploadId], references: [id], onDelete: SetNull)
 
   collections      Collection[]
   payments         Payment[]

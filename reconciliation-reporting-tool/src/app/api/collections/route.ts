@@ -8,7 +8,35 @@ export async function GET() {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
 
+  const partnerIds =
+    auth.user.role === "PARTNER"
+      ? (
+          await prisma.userPartner.findMany({
+            where: { userId: auth.user.id },
+            select: { partnerId: true },
+          })
+        ).map((x) => x.partnerId)
+      : null;
+
+  const opcoIds =
+    auth.user.role === "OPCO"
+      ? (
+          await prisma.userOpCo.findMany({
+            where: { userId: auth.user.id },
+            select: { opcoId: true },
+          })
+        ).map((x) => x.opcoId)
+      : null;
+
+  const where =
+    auth.user.role === "OPCO"
+      ? { opcoId: { in: opcoIds ?? [] } }
+      : auth.user.role === "PARTNER"
+        ? { invoice: { partnerId: { in: partnerIds ?? [] } } }
+        : {};
+
   const collections = await prisma.collection.findMany({
+    where,
     orderBy: { receivedAt: "desc" },
     take: 50,
     select: {
@@ -52,16 +80,50 @@ export async function POST(req: Request) {
     );
   }
 
+  if (auth.user.role === "OPCO") {
+    const allowed = await prisma.userOpCo.findFirst({
+      where: { userId: auth.user.id, opcoId: parsed.data.opcoId },
+      select: { opcoId: true },
+    });
+    if (!allowed) {
+      return NextResponse.json(
+        { ok: false, message: "Forbidden: OpCo not assigned" },
+        { status: 403 },
+      );
+    }
+  }
+
   if (parsed.data.invoiceId) {
     const inv = await prisma.invoice.findUnique({
       where: { id: parsed.data.invoiceId },
-      select: { id: true },
+      select: { id: true, opcoId: true, partnerId: true },
     });
     if (!inv) {
       return NextResponse.json(
         { ok: false, message: "Invoice not found" },
         { status: 404 },
       );
+    }
+
+    // Ensure collection OpCo matches invoice OpCo
+    if (inv.opcoId !== parsed.data.opcoId) {
+      return NextResponse.json(
+        { ok: false, message: "Invoice/OpCo mismatch" },
+        { status: 409 },
+      );
+    }
+
+    if (auth.user.role === "PARTNER") {
+      const allowed = await prisma.userPartner.findFirst({
+        where: { userId: auth.user.id, partnerId: inv.partnerId },
+        select: { partnerId: true },
+      });
+      if (!allowed) {
+        return NextResponse.json(
+          { ok: false, message: "Forbidden: Partner not assigned" },
+          { status: 403 },
+        );
+      }
     }
   }
 

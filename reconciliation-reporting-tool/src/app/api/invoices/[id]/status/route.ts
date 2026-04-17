@@ -35,13 +35,47 @@ export async function PATCH(
 
   const invoice = await prisma.invoice.findUnique({
     where: { id },
-    select: { id: true, status: true, month: true, year: true, opcoId: true, amount: true },
+    select: {
+      id: true,
+      status: true,
+      month: true,
+      year: true,
+      opcoId: true,
+      partnerId: true,
+      amount: true,
+    },
   });
   if (!invoice) {
     return NextResponse.json(
       { ok: false, message: "Invoice not found" },
       { status: 404 },
     );
+  }
+
+  // Assignment scoping: restrict updates for PARTNER/OPCO roles.
+  if (auth.user.role === "OPCO") {
+    const allowed = await prisma.userOpCo.findFirst({
+      where: { userId: auth.user.id, opcoId: invoice.opcoId },
+      select: { opcoId: true },
+    });
+    if (!allowed) {
+      return NextResponse.json(
+        { ok: false, message: "Forbidden: OpCo not assigned" },
+        { status: 403 },
+      );
+    }
+  }
+  if (auth.user.role === "PARTNER") {
+    const allowed = await prisma.userPartner.findFirst({
+      where: { userId: auth.user.id, partnerId: invoice.partnerId },
+      select: { partnerId: true },
+    });
+    if (!allowed) {
+      return NextResponse.json(
+        { ok: false, message: "Forbidden: Partner not assigned" },
+        { status: 403 },
+      );
+    }
   }
 
   // Key business rule: partner invoice processing depends on OpCo collections received.

@@ -9,6 +9,7 @@ type InvoiceRow = {
   year: number;
   currency: string | null;
   amount: string;
+  partnerInvoiceUploadId?: string | null;
   service?: { code: string; name: string } | null;
   opco?: { code: string; name: string } | null;
   partner?: { code: string; name: string } | null;
@@ -27,6 +28,7 @@ export default function ClientInvoicesPage() {
   const [currency, setCurrency] = useState("USD");
   const [amount, setAmount] = useState("");
   const [reconciliationId, setReconciliationId] = useState("");
+  const [partnerInvoiceUploadId, setPartnerInvoiceUploadId] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function refresh() {
@@ -58,6 +60,7 @@ export default function ClientInvoicesPage() {
           serviceId,
           opcoId,
           partnerId,
+          partnerInvoiceUploadId: partnerInvoiceUploadId || null,
           currency: currency || null,
           amount,
         }),
@@ -179,6 +182,17 @@ export default function ClientInvoicesPage() {
               value={reconciliationId}
               onChange={(e) => setReconciliationId(e.target.value)}
               placeholder="reconciliationId"
+            />
+          </label>
+          <label className="space-y-1 md:col-span-2">
+            <div className="text-sm font-medium">
+              Partner Invoice Upload ID (optional)
+            </div>
+            <input
+              className="w-full rounded border px-3 py-2"
+              value={partnerInvoiceUploadId}
+              onChange={(e) => setPartnerInvoiceUploadId(e.target.value)}
+              placeholder="partnerInvoiceUploadId"
             />
           </label>
         </div>
